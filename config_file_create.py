@@ -6,20 +6,38 @@ if __name__ == "__main__":
     config = ConfigParser()
 
     # prepare_dataset.py configuration
+    # config['prepare_dataset'] = {
+    #     #Path To LIDC Dataset
+    #     'LIDC_DICOM_PATH': './LIDC-IDRI',
+    #     # Directory to save the output files
+    #     # Directory for masks
+    #     'MASK_PATH':'./data/Mask',
+    #     # Directory for images
+    #     'IMAGE_PATH':'./data/Image',
+    #     # To save images and mask that doesn't contain any nodule or cancer
+    #     # These images will be used later to evaluate our model
+    #     'CLEAN_PATH_IMAGE':'./data/Clean/Image',
+    #     'CLEAN_PATH_MASK':'./data/Clean/Mask',
+    #     # CSV file containing nodule information, malignancy, train test split
+    #     'META_PATH': './data/Meta/',
+    #     # Mask Threshold is the np.sum(MASK) threshold. Some Masks are too small. We remove these small images,masks as they might act as outliers
+    #     # The threshold 8 was decided by empirical evaluation.
+    #     'Mask_Threshold':8
+    # }
     config['prepare_dataset'] = {
         #Path To LIDC Dataset
-        'LIDC_DICOM_PATH': './LIDC-IDRI',
+        'LIDC_DICOM_PATH': 'D:\Documents\data\lung\LIDC-IDRI\LIDC-IDRI',
         # Directory to save the output files
         # Directory for masks
-        'MASK_PATH':'./data/Mask',
+        'MASK_PATH':'D:\Documents\data\lung\LIDC-IDRI\preprocess/Mask',
         # Directory for images
-        'IMAGE_PATH':'./data/Image',
+        'IMAGE_PATH':'D:\Documents\data\lung\LIDC-IDRI\preprocess/Image',
         # To save images and mask that doesn't contain any nodule or cancer
         # These images will be used later to evaluate our model
-        'CLEAN_PATH_IMAGE':'./data/Clean/Image',
-        'CLEAN_PATH_MASK':'./data/Clean/Mask',
+        'CLEAN_PATH_IMAGE':'D:\Documents\data\lung\LIDC-IDRI\preprocess/Clean/Image',
+        'CLEAN_PATH_MASK':'D:\Documents\data\lung\LIDC-IDRI\preprocess/Clean/Mask',
         # CSV file containing nodule information, malignancy, train test split
-        'META_PATH': './data/Meta/',
+        'META_PATH': 'D:\Documents\data\lung\LIDC-IDRI\preprocess/Meta/',
         # Mask Threshold is the np.sum(MASK) threshold. Some Masks are too small. We remove these small images,masks as they might act as outliers
         # The threshold 8 was decided by empirical evaluation.
         'Mask_Threshold':8
