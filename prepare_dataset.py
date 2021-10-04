@@ -65,6 +65,7 @@ class MakeDataSet:
             return malignancy, False
         else:
             return malignancy, 'Ambiguous'
+
     def save_meta(self,meta_list):
         """Saves the information of nodule to csv file"""
         tmp = pd.Series(meta_list,index=['patient_id','nodule_no','slice_no','original_image','mask_image','malignancy','is_cancer','is_clean'])
@@ -91,9 +92,101 @@ class MakeDataSet:
         CLEAN_DIR_IMAGE = Path(self.clean_path_img)
         CLEAN_DIR_MASK = Path(self.clean_path_mask)
 
+        for patient in tqdm(self.IDRI_list[:200]):
+            pid = patient #LIDC-IDRI-0001~
+            scan = pl.query(pl.Scan).filter(pl.Scan.patient_id == pid).first()
+            nodules_annotation = scan.cluster_annotations()
+            vol = scan.to_volume()
+            print("Patient ID: {} Dicom Shape: {} Number of Annotated Nodules: {}".format(pid,vol.shape,len(nodules_annotation)))
 
+            patient_image_dir = IMAGE_DIR / pid
+            patient_mask_dir = MASK_DIR / pid
+            Path(patient_image_dir).mkdir(parents=True, exist_ok=True)
+            Path(patient_mask_dir).mkdir(parents=True, exist_ok=True)
 
-        for patient in tqdm(self.IDRI_list):
+            if len(nodules_annotation) > 0:
+                # Patients with nodules
+                for nodule_idx, nodule in enumerate(nodules_annotation):
+                # Call nodule images. Each Patient will have at maximum 4 annotations as there are only 4 doctors
+                # This current for loop iterates over total number of nodules in a single patient
+                    mask, cbbox, masks = consensus(nodule,self.c_level,self.padding)
+                    lung_np_array = vol[cbbox]
+
+                    # We calculate the malignancy information
+                    malignancy, cancer_label = self.calculate_malignancy(nodule)
+
+                    for nodule_slice in range(mask.shape[2]):
+                        # This second for loop iterates over each single nodule.
+                        # There are some mask sizes that are too small. These may hinder training.
+                        if np.sum(mask[:,:,nodule_slice]) <= self.mask_threshold:
+                            continue
+                        # Segment Lung part only
+                        img_s = lung_np_array[:,:,nodule_slice]
+                        # normalize to 0-255 according to window/level of 1500/-650
+                        img_s[img_s<-1400] = -1400
+                        img_s[img_s> 100] = 100
+                        img_s = img_s + 1400
+                        img_s = np.asarray(img_s / 1500.0 * 255, np.uint8)
+                        img_s = Image.fromarray(img_s)
+                        mask_s = Image.fromarray(mask[:, :, nodule_slice]) 
+
+                        # This itereates through the slices of a single nodule
+                        # Naming of each file: NI= Nodule Image, MA= Mask Original
+                        nodule_name = "{}_NI{}_slice{}.png".format(pid[-4:],prefix[nodule_idx],prefix[nodule_slice])
+                        mask_name = "{}_MA{}_slice{}.png".format(pid[-4:],prefix[nodule_idx],prefix[nodule_slice])
+                        meta_list = [pid[-4:],nodule_idx,prefix[nodule_slice],nodule_name,mask_name,malignancy,cancer_label,False]
+
+                        self.save_meta(meta_list)
+                        # save images as png
+                        img_s.save(patient_image_dir / nodule_name)
+                        mask_s.save(patient_mask_dir / mask_name)
+            else:
+                continue
+                print("Clean Dataset",pid)
+                patient_clean_dir_image = CLEAN_DIR_IMAGE / pid
+                patient_clean_dir_mask = CLEAN_DIR_MASK / pid
+                Path(patient_clean_dir_image).mkdir(parents=True, exist_ok=True)
+                Path(patient_clean_dir_mask).mkdir(parents=True, exist_ok=True)
+                #There are patients that don't have nodule at all. Meaning, its a clean dataset. We need to use this for validation
+                for slice in range(vol.shape[2]):
+                    if slice >50:
+                        break
+                    lung_segmented_np_array = segment_lung(vol[:,:,slice])
+                    lung_segmented_np_array[lung_segmented_np_array==-0] =0
+                    lung_mask = np.zeros_like(lung_segmented_np_array)
+
+                    #CN= CleanNodule, CM = CleanMask
+                    nodule_name = "{}/{}_CN001_slice{}".format(pid,pid[-4:],prefix[slice])
+                    mask_name = "{}/{}_CM001_slice{}".format(pid,pid[-4:],prefix[slice])
+                    meta_list = [pid[-4:],slice,prefix[slice],nodule_name,mask_name,0,False,True]
+                    self.save_meta(meta_list)
+                    np.save(patient_clean_dir_image / nodule_name, lung_segmented_np_array)
+                    np.save(patient_clean_dir_mask / mask_name, lung_mask)
+        print("Saved Meta data")
+        self.meta.to_csv(self.meta_path+'meta_info.csv',index=False)
+
+    def prepare_dataset_backup(self):
+        # This is to name each image and mask
+        prefix = [str(x).zfill(3) for x in range(1000)]
+
+        # Make directory
+        if not os.path.exists(self.img_path):
+            os.makedirs(self.img_path)
+        if not os.path.exists(self.mask_path):
+            os.makedirs(self.mask_path)
+        if not os.path.exists(self.clean_path_img):
+            os.makedirs(self.clean_path_img)
+        if not os.path.exists(self.clean_path_mask):
+            os.makedirs(self.clean_path_mask)
+        if not os.path.exists(self.meta_path):
+            os.makedirs(self.meta_path)
+
+        IMAGE_DIR = Path(self.img_path)
+        MASK_DIR = Path(self.mask_path)
+        CLEAN_DIR_IMAGE = Path(self.clean_path_img)
+        CLEAN_DIR_MASK = Path(self.clean_path_mask)
+
+        for patient in tqdm(self.IDRI_list[:5]):
             pid = patient #LIDC-IDRI-0001~
             scan = pl.query(pl.Scan).filter(pl.Scan.patient_id == pid).first()
             nodules_annotation = scan.cluster_annotations()
@@ -165,7 +258,7 @@ class MakeDataSet:
 
 if __name__ == '__main__':
     # I found out that simply using os.listdir() includes the gitignore file 
-    LIDC_IDRI_list= [f for f in os.listdir(DICOM_DIR) if not f.startswith('.')]
+    LIDC_IDRI_list= [f for f in os.listdir(DICOM_DIR) if "LIDC-IDRI" in f]
     LIDC_IDRI_list.sort()
 
 
